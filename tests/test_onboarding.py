@@ -142,3 +142,33 @@ async def test_nearby_search(client, login_as):
     # Chennai is far away
     far = (await client.get("/admin/drivers/nearby?lat=13.0827&lng=80.2707&radius_km=50", headers=admin)).json()
     assert far == []
+
+
+async def test_parallel_first_requests_do_not_crash(client, login_as):
+    # The apps call /drivers/me and /drivers/me/checklist at the same time for a brand-new driver
+    import asyncio
+
+    driver = await login_as(client, "9876543299")
+    results = await asyncio.gather(
+        client.get("/drivers/me", headers=driver),
+        client.get("/drivers/me/checklist", headers=driver),
+        client.get("/drivers/me/documents", headers=driver),
+    )
+    assert [r.status_code for r in results] == [200, 200, 200]
+
+
+async def test_unexpected_error_is_json_with_cors(client, monkeypatch):
+    from app.routers import drivers
+
+    async def boom(*args, **kwargs):
+        raise RuntimeError("boom")
+
+    monkeypatch.setattr(drivers, "get_or_create_profile", boom)
+    code = (await client.post("/auth/otp/request", json={"phone": "9876543298"})).json()["dev_code"]
+    token = (await client.post("/auth/otp/verify", json={"phone": "9876543298", "code": code})).json()["access_token"]
+    r = await client.get(
+        "/drivers/me", headers={"Authorization": f"Bearer {token}", "Origin": "http://localhost:5173"}
+    )
+    assert r.status_code == 500
+    assert r.json()["detail"].startswith("Something went wrong")
+    assert r.headers.get("access-control-allow-origin") == "http://localhost:5173"

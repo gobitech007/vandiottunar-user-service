@@ -148,6 +148,28 @@ class DriverDocument(Base):
     driver: Mapped[DriverProfile] = relationship(back_populates="documents")
 
 
+class CustomerProfile(Base):
+    """A car owner booking drivers (role=customer) or a business hiring drivers (role=employer)."""
+
+    __tablename__ = "customer_profiles"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=new_id)
+    user_id: Mapped[str] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), unique=True)
+    full_name: Mapped[str | None] = mapped_column(String(120))
+    email: Mapped[str | None] = mapped_column(String(254))
+    preferred_language: Mapped[str] = mapped_column(String(8), default="ta")
+    company_name: Mapped[str | None] = mapped_column(String(160))  # employers only
+    home_pincode: Mapped[str | None] = mapped_column(String(6), index=True)
+    home_area: Mapped[str | None] = mapped_column(String(120))
+    # What they want: "on_demand" (hourly/daily/outstation driver) and/or "job" (permanent driver)
+    needs: Mapped[list[str]] = mapped_column(JSON, default=list)
+    vehicle_note: Mapped[str | None] = mapped_column(String(120))  # e.g. "Innova, automatic"
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, onupdate=utcnow)
+
+    user: Mapped[User] = relationship()
+
+
 class Consent(Base):
     """Proof of consent to the driver notice (DPDP Act)."""
 

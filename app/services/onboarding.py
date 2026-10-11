@@ -1,4 +1,5 @@
 from sqlalchemy import select
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
@@ -9,17 +10,27 @@ from app.schemas import ChecklistOut
 REQUIRED_FIELDS = ("full_name", "licence_number", "experience_years", "vehicle_types", "availability", "work_preferences")
 
 
-async def get_or_create_profile(session: AsyncSession, user: User) -> DriverProfile:
-    profile = await session.scalar(
-        select(DriverProfile).options(selectinload(DriverProfile.documents)).where(DriverProfile.user_id == user.id)
+async def _find_profile(session: AsyncSession, user_id: str) -> DriverProfile | None:
+    return await session.scalar(
+        select(DriverProfile)
+        .options(selectinload(DriverProfile.documents))
+        .where(DriverProfile.user_id == user_id)
+        .execution_options(populate_existing=True)
     )
+
+
+async def get_or_create_profile(session: AsyncSession, user: User) -> DriverProfile:
+    user_id = user.id
+    profile = await _find_profile(session, user_id)
     if profile is None:
-        profile = DriverProfile(user_id=user.id, vehicle_types=[], work_preferences=[])
-        session.add(profile)
-        await session.commit()
-        profile = await session.scalar(
-            select(DriverProfile).options(selectinload(DriverProfile.documents)).where(DriverProfile.id == profile.id)
-        )
+        session.add(DriverProfile(user_id=user_id, vehicle_types=[], work_preferences=[]))
+        try:
+            await session.commit()
+        except IntegrityError:
+            # Another request (the apps load profile and checklist in parallel) created it first
+            await session.rollback()
+            await session.refresh(user)
+        profile = await _find_profile(session, user_id)
     return profile
 
 

@@ -1,14 +1,16 @@
 import logging
 from contextlib import asynccontextmanager
 
-from fastapi import FastAPI
+from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse
 
 from app.core.config import get_settings
 from app.db import Base, engine
-from app.routers import admin, auth, drivers
+from app.routers import admin, auth, customers, drivers
 
 logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger("vandi.api")
 
 
 @asynccontextmanager
@@ -24,6 +26,19 @@ async def lifespan(app: FastAPI):
 
 settings = get_settings()
 app = FastAPI(title=settings.app_name, version="0.1.0", lifespan=lifespan)
+
+
+# Registered before CORS so it sits inside it: unexpected errors become a JSON 500 that still carries
+# CORS headers, so browsers show the message instead of a misleading "network error".
+@app.middleware("http")
+async def unexpected_errors(request: Request, call_next):
+    try:
+        return await call_next(request)
+    except Exception:
+        logger.exception("Unhandled error on %s %s", request.method, request.url.path)
+        return JSONResponse({"detail": "Something went wrong on our side. Please try again."}, status_code=500)
+
+
 app.add_middleware(
     CORSMiddleware,
     allow_origins=settings.cors_origin_list,
@@ -34,6 +49,7 @@ app.add_middleware(
 
 app.include_router(auth.router)
 app.include_router(drivers.router)
+app.include_router(customers.router)
 app.include_router(admin.router)
 
 

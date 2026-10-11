@@ -61,3 +61,20 @@ async def test_driver_cannot_use_admin_api(client, login_as):
     headers = await login_as(client, "9876544444")
     assert (await client.get("/admin/drivers", headers=headers)).status_code == 403
     assert (await client.get("/admin/drivers")).status_code == 401
+
+
+async def test_admin_portal_refuses_non_admin_without_creating_account(client, login_as):
+    code = (await client.post("/auth/otp/request", json={"phone": "9876555555"})).json()["dev_code"]
+    r = await client.post("/auth/otp/verify", json={"phone": "9876555555", "code": code, "role": "admin"})
+    assert r.status_code == 403 and "ADMIN_PHONES" in r.json()["detail"]
+    # No account was created: a later driver login is a new user
+    code = (await client.post("/auth/otp/request", json={"phone": "9876555555"})).json()["dev_code"]
+    r = await client.post("/auth/otp/verify", json={"phone": "9876555555", "code": code})
+    assert r.json()["is_new_user"] is True
+
+
+async def test_existing_driver_promoted_when_added_to_admin_phones(client, login_as):
+    # Someone who first signed up as a driver and is later listed in ADMIN_PHONES becomes admin
+    code = (await client.post("/auth/otp/request", json={"phone": "9000000001"})).json()["dev_code"]
+    r = await client.post("/auth/otp/verify", json={"phone": "9000000001", "code": code, "role": "admin"})
+    assert r.status_code == 200 and r.json()["role"] == "admin"

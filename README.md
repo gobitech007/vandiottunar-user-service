@@ -1,6 +1,6 @@
 # Vandi Ottunar — User Service
 
-FastAPI service for accounts and **driver onboarding**: OTP login, driver profile, location capture, document upload, privacy consent, and admin approval with police verification.
+FastAPI service for accounts: **driver onboarding** (OTP login, profile, location, documents, privacy consent, admin approval with police verification) and **customer accounts** (car owners and businesses).
 
 Part of the Vandi Ottunar platform:
 
@@ -42,6 +42,8 @@ uvicorn app.main:app --reload
 
 In development (`SMS_PROVIDER=console`) the OTP is printed in the server log and returned as `dev_code`, so you can log in without SMS.
 
+**Admin access:** put your number in `ADMIN_PHONES` in `.env` (e.g. `ADMIN_PHONES=+919876543210`) and restart the API. The admin sign-in page refuses any other number and never creates an account. If the number was already registered as a driver or customer, it becomes an admin on its next admin sign-in.
+
 ## API
 
 | Method | Path | Who | What |
@@ -56,6 +58,8 @@ In development (`SMS_PROVIDER=console`) the OTP is printed in the server log and
 | POST | `/drivers/me/documents/{type}` | driver | Upload `licence_front`, `licence_back`, `id_proof`, `address_proof` (optional), `selfie` |
 | GET | `/drivers/me/checklist` | driver | What's still missing before submit |
 | POST | `/drivers/me/submit` | driver | Submit for review |
+| GET | `/customers/me` | customer / employer | Customer profile (created on first call) |
+| PUT | `/customers/me` | customer / employer | Name, email, company (employers), pincode, area, needs, vehicle |
 | GET | `/admin/drivers?status=&q=` | admin | List / search applications |
 | GET | `/admin/drivers/{id}` | admin | Full detail with short-lived document links |
 | POST | `/admin/drivers/{id}/approve` | admin | Approve — **requires police verification** |
@@ -63,6 +67,7 @@ In development (`SMS_PROVIDER=console`) the OTP is printed in the server log and
 | POST | `/admin/drivers/{id}/suspend` | admin | Suspend an approved driver |
 | GET | `/admin/drivers/nearby?lat=&lng=&radius_km=` | admin | Approved drivers near a point |
 | GET | `/admin/stats` | admin | Counts by status + signups by pincode |
+| GET | `/admin/customers?q=` | admin | List / search customers and businesses |
 
 ## Security notes
 

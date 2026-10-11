@@ -43,7 +43,8 @@ class OtpRequestOut(BaseModel):
 
 class OtpVerifyIn(PhoneIn):
     code: str = Field(min_length=4, max_length=8, pattern=r"^\d+$")
-    role: Literal["driver", "customer", "employer"] = "driver"
+    # "admin" means "sign in to the admin panel": refused unless the phone is in ADMIN_PHONES
+    role: Literal["driver", "customer", "employer", "admin"] = "driver"
 
 
 class TokenOut(BaseModel):
@@ -194,6 +195,45 @@ class NearbyDriver(BaseModel):
     within_service_area: bool
     vehicle_types: list[str]
     work_preferences: list[str]
+
+
+CustomerNeed = Literal["on_demand", "job"]
+
+
+class CustomerUpdate(BaseModel):
+    full_name: str | None = Field(default=None, min_length=2, max_length=120)
+    email: str | None = Field(default=None, max_length=254, pattern=r"^[^@\s]+@[^@\s]+\.[^@\s]+$")
+    preferred_language: Literal["ta", "en"] | None = None
+    company_name: str | None = Field(default=None, max_length=160)
+    home_pincode: str | None = Field(default=None, pattern=r"^[1-9]\d{5}$")
+    home_area: str | None = Field(default=None, max_length=120)
+    needs: list[CustomerNeed] | None = Field(default=None, max_length=2)
+    vehicle_note: str | None = Field(default=None, max_length=120)
+
+
+class CustomerOut(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+    id: str
+    full_name: str | None
+    email: str | None
+    preferred_language: str
+    company_name: str | None
+    home_pincode: str | None
+    home_area: str | None
+    needs: list[str]
+    vehicle_note: str | None
+    profile_complete: bool
+    created_at: datetime
+
+
+class AdminCustomer(CustomerOut):
+    phone: str
+    role: Role
+
+
+class CustomerList(BaseModel):
+    items: list[AdminCustomer]
+    total: int
 
 
 class StatsOut(BaseModel):

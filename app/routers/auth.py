@@ -73,7 +73,7 @@ async def verify_otp(body: OtpVerifyIn, session: AsyncSession = Depends(get_sess
         .limit(1)
     )
     if otp is None or as_utc(otp.expires_at) < utcnow():
-        raise HTTPException(status.HTTP_400_BAD_REQUEST, "Code expired. Please request a new one.")
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "This code has expired or was already used. Please request a new one.")
     if otp.attempts >= s.otp_max_attempts:
         raise HTTPException(status.HTTP_429_TOO_MANY_REQUESTS, "Too many wrong attempts. Request a new code.")
     if not otp_matches(body.phone, body.code, otp.code_hash):
@@ -82,6 +82,12 @@ async def verify_otp(body: OtpVerifyIn, session: AsyncSession = Depends(get_sess
         raise HTTPException(status.HTTP_400_BAD_REQUEST, "Wrong code. Please check and try again.")
 
     otp.consumed = True
+    if body.role == "admin" and body.phone not in s.admin_phone_set:
+        # Never create an account from the admin sign-in page
+        await session.commit()
+        raise HTTPException(
+            status.HTTP_403_FORBIDDEN, "This number is not an admin. Add it to ADMIN_PHONES and restart the API."
+        )
     user = await session.scalar(select(User).where(User.phone == body.phone))
     is_new = user is None
     if user is None:

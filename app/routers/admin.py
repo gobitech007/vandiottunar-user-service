@@ -9,18 +9,21 @@ from app.core.security import create_file_token, decode_token, utcnow
 from app.core.storage import get_storage
 from app.db import get_session
 from app.deps import require_role
-from app.models import DriverDocument, DriverProfile, DriverStatus, ReviewEvent, Role, User
+from app.models import CustomerProfile, DriverDocument, DriverProfile, DriverStatus, ReviewEvent, Role, User
 from app.schemas import (
+    AdminCustomer,
     AdminDocumentOut,
     AdminDriverDetail,
     AdminDriverSummary,
     ApproveIn,
+    CustomerList,
     DriverList,
     NearbyDriver,
     ProfileOut,
     RejectIn,
     StatsOut,
 )
+from app.routers.customers import to_out
 from app.services.geo import bounding_box, haversine_km
 from app.services.onboarding import latest_consent
 
@@ -245,3 +248,30 @@ async def stats(_: User = Depends(admin_only), session: AsyncSession = Depends(g
         by_status={s.value: by_status.get(s.value, 0) for s in DriverStatus},
         signups_by_pincode=[{"pincode": p, "drivers": n} for p, n in pincodes],
     )
+
+
+@router.get("/customers", response_model=CustomerList)
+async def list_customers(
+    q: str | None = Query(default=None, max_length=60),
+    limit: int = Query(default=25, ge=1, le=100),
+    offset: int = Query(default=0, ge=0),
+    _: User = Depends(admin_only),
+    session: AsyncSession = Depends(get_session),
+):
+    stmt = select(CustomerProfile).join(User).options(selectinload(CustomerProfile.user))
+    if q:
+        like = f"%{q.strip()}%"
+        stmt = stmt.where(
+            or_(
+                CustomerProfile.full_name.ilike(like),
+                CustomerProfile.company_name.ilike(like),
+                User.phone.ilike(like),
+                CustomerProfile.home_pincode.ilike(like),
+            )
+        )
+    total = await session.scalar(select(func.count()).select_from(stmt.order_by(None).subquery()))
+    rows = (await session.scalars(stmt.order_by(CustomerProfile.created_at.desc()).limit(limit).offset(offset))).all()
+    items = [
+        AdminCustomer(**to_out(c, c.user.role).model_dump(), phone=c.user.phone, role=c.user.role) for c in rows
+    ]
+    return CustomerList(items=items, total=total or 0)
