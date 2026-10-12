@@ -1,16 +1,32 @@
 import re
-from datetime import datetime
+from datetime import date, datetime
 from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 from app.models import DocumentType, DriverStatus, Role
+from app.services.licence import ALL_CLASSES, normalise_class
 
 _PHONE_RE = re.compile(r"^[6-9]\d{9}$")
 
 VehicleType = Literal["car_manual", "car_automatic", "suv", "van", "light_commercial", "heavy_vehicle"]
 Availability = Literal["full_time", "part_time", "weekends"]
 WorkPreference = Literal["on_demand", "job"]
+
+
+def normalize_licence_number(v: str) -> str:
+    cleaned = re.sub(r"[\s\-./]", "", v).upper()
+    if not re.match(r"^[A-Z]{2}\d{2}[A-Z0-9]{4,}$", cleaned):
+        raise ValueError("Licence number should look like TN3820200001234")
+    return cleaned
+
+
+def normalize_car_number(v: str) -> str:
+    cleaned = re.sub(r"[\s\-.]", "", v).upper()
+    # Regular plates (TN37AB1234, TN371234) and Bharat series (22BH1234AA)
+    if not (re.match(r"^[A-Z]{2}\d{1,2}[A-Z]{0,3}\d{1,4}$", cleaned) or re.match(r"^\d{2}BH\d{4}[A-Z]{1,2}$", cleaned)):
+        raise ValueError("Car number should look like TN37AB1234")
+    return cleaned
 
 
 def normalize_indian_phone(value: str) -> str:
@@ -45,6 +61,8 @@ class OtpVerifyIn(PhoneIn):
     code: str = Field(min_length=4, max_length=8, pattern=r"^\d+$")
     # "admin" means "sign in to the admin panel": refused unless the phone is in ADMIN_PHONES
     role: Literal["driver", "customer", "employer", "admin"] = "driver"
+    # "login" never creates an account: unknown numbers are told to register first
+    intent: Literal["register", "login"] = "register"
 
 
 class TokenOut(BaseModel):
@@ -76,12 +94,45 @@ class ProfileUpdate(BaseModel):
     @field_validator("licence_number")
     @classmethod
     def _licence(cls, v: str | None) -> str | None:
-        if v is None:
-            return v
-        cleaned = re.sub(r"[\s\-]", "", v).upper()
-        if not re.match(r"^[A-Z]{2}\d{2}[A-Z0-9]{4,}$", cleaned):
-            raise ValueError("Licence number should look like TN3820200001234")
-        return cleaned
+        return None if v is None else normalize_licence_number(v)
+
+
+LicenceSource = Literal["manual", "ocr_browser", "ocr_server", "ocr_device"]
+
+
+def _normalise_classes(values: list[str]) -> list[str]:
+    out = []
+    for raw in values:
+        code = normalise_class(raw)
+        if code is None:
+            raise ValueError(f"Unknown licence class: {raw}")
+        out.append(code)
+    return sorted(set(out))
+
+
+class LicenceIn(BaseModel):
+    licence_number: str = Field(min_length=8, max_length=32)
+    classes: list[str] = Field(min_length=1, max_length=len(ALL_CLASSES))
+    valid_till: date | None = None
+    source: LicenceSource = "manual"
+    raw_text: str | None = Field(default=None, max_length=4000)
+
+    _number = field_validator("licence_number")(classmethod(lambda cls, v: normalize_licence_number(v)))
+    _classes = field_validator("classes")(classmethod(lambda cls, v: _normalise_classes(v)))
+
+
+class LicenceTextIn(BaseModel):
+    text: str = Field(max_length=8000)
+
+
+class ParsedLicenceOut(BaseModel):
+    licence_number: str | None
+    classes: list[str]
+    valid_till: date | None
+    two_wheeler: bool
+    four_wheeler: bool
+    heavy: bool
+    raw_text: str | None = None
 
 
 class LocationIn(BaseModel):
@@ -118,6 +169,13 @@ class ProfileOut(BaseModel):
     full_name: str | None
     preferred_language: str
     licence_number: str | None
+    licence_classes: list[str] = []
+    licence_valid_till: date | None = None
+    licence_source: str | None = None
+    licence_verified: bool = False
+    two_wheeler: bool = False
+    four_wheeler: bool = False
+    heavy_vehicle: bool = False
     experience_years: int | None
     vehicle_types: list[str]
     availability: str | None
@@ -141,19 +199,25 @@ class ProfileOut(BaseModel):
 
 class ChecklistOut(BaseModel):
     profile_complete: bool
+    licence_complete: bool
     location_captured: bool
     consent_accepted: bool
     missing_documents: list[DocumentType]
     missing_fields: list[str]
     ready_to_submit: bool
     current_consent_version: str
+    server_ocr_available: bool
 
 
 class AdminDriverSummary(BaseModel):
     id: str
+    user_id: str
     full_name: str | None
     phone: str
     status: DriverStatus
+    two_wheeler: bool = False
+    four_wheeler: bool = False
+    heavy_vehicle: bool = False
     home_pincode: str | None
     home_area: str | None
     experience_years: int | None
@@ -164,7 +228,9 @@ class AdminDriverSummary(BaseModel):
 
 
 class AdminDriverDetail(ProfileOut):
+    user_id: str
     phone: str
+    licence_raw_text: str | None
     police_reference: str | None
     registration_accuracy_m: float | None
     documents: list[AdminDocumentOut]
@@ -179,8 +245,14 @@ class DriverList(BaseModel):
 
 class ApproveIn(BaseModel):
     police_verified: bool
+    # Admin confirms the licence number and classes match the licence photo
+    licence_verified: bool = False
+    # Optional correction of the classes the driver entered
+    licence_classes: list[str] | None = Field(default=None, min_length=1)
     police_reference: str | None = Field(default=None, max_length=64)
     note: str | None = Field(default=None, max_length=500)
+
+    _classes = field_validator("licence_classes")(classmethod(lambda cls, v: None if v is None else _normalise_classes(v)))
 
 
 class RejectIn(BaseModel):
@@ -209,6 +281,12 @@ class CustomerUpdate(BaseModel):
     home_area: str | None = Field(default=None, max_length=120)
     needs: list[CustomerNeed] | None = Field(default=None, max_length=2)
     vehicle_note: str | None = Field(default=None, max_length=120)
+    car_number: str | None = Field(default=None, max_length=16)
+
+    @field_validator("car_number")
+    @classmethod
+    def _car(cls, v: str | None) -> str | None:
+        return None if v is None else normalize_car_number(v)
 
 
 class CustomerOut(BaseModel):
@@ -222,6 +300,7 @@ class CustomerOut(BaseModel):
     home_area: str | None
     needs: list[str]
     vehicle_note: str | None
+    car_number: str | None = None
     profile_complete: bool
     created_at: datetime
 
@@ -239,3 +318,39 @@ class CustomerList(BaseModel):
 class StatsOut(BaseModel):
     by_status: dict[str, int]
     signups_by_pincode: list[dict]
+
+
+# ---- Internal API used by other services (X-Service-Token) ----
+
+
+class InternalDriver(BaseModel):
+    user_id: str
+    driver_id: str
+    full_name: str | None
+    phone: str
+    status: DriverStatus
+    home_pincode: str | None
+    home_area: str | None
+    home_lat: float | None
+    home_lng: float | None
+    service_radius_km: int
+    vehicle_types: list[str]
+    licence_classes: list[str]
+    two_wheeler: bool
+    four_wheeler: bool
+    heavy_vehicle: bool
+    work_preferences: list[str]
+    availability: str | None
+    experience_years: int | None
+
+
+class InternalUser(BaseModel):
+    user_id: str
+    role: Role
+    phone: str
+    is_active: bool
+    full_name: str | None = None
+    company_name: str | None = None
+    home_pincode: str | None = None
+    home_area: str | None = None
+    car_number: str | None = None

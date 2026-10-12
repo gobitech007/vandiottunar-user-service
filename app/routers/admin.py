@@ -45,7 +45,11 @@ async def _load_driver(session: AsyncSession, driver_id: str) -> DriverProfile:
 def _summary(p: DriverProfile) -> AdminDriverSummary:
     return AdminDriverSummary(
         id=p.id,
+        user_id=p.user_id,
         full_name=p.full_name,
+        two_wheeler=p.two_wheeler,
+        four_wheeler=p.four_wheeler,
+        heavy_vehicle=p.heavy_vehicle,
         phone=p.user.phone,
         status=p.status,
         home_pincode=p.home_pincode,
@@ -142,7 +146,9 @@ async def driver_detail(
     base = ProfileOut.model_validate(p).model_dump()
     return AdminDriverDetail(
         **base,
+        user_id=p.user_id,
         phone=p.user.phone,
+        licence_raw_text=p.licence_raw_text,
         police_reference=p.police_reference,
         registration_accuracy_m=p.registration_accuracy_m,
         documents=docs,
@@ -190,6 +196,13 @@ async def approve(
         raise HTTPException(
             422, "Police verification must be completed before approval"
         )
+    if body.licence_classes:
+        p.licence_classes = body.licence_classes
+    if not (body.licence_verified or p.licence_verified):
+        raise HTTPException(422, "Check the licence number and vehicle classes against the photo before approval")
+    if not p.licence_classes:
+        raise HTTPException(422, "The driver has no licence classes recorded")
+    p.licence_verified = True
     if body.police_verified and not p.police_verified:
         p.police_verified = True
         p.police_verified_at = utcnow()

@@ -3,13 +3,25 @@ import uuid
 from fastapi import APIRouter, Depends, File, HTTPException, Request, UploadFile, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core import ocr
 from app.core.config import get_settings
 from app.core.security import utcnow
 from app.core.storage import get_storage
 from app.db import get_session
 from app.deps import require_role
 from app.models import Consent, DocumentType, DriverDocument, DriverProfile, DriverStatus, Role, User
-from app.schemas import ChecklistOut, ConsentIn, DocumentOut, LocationIn, ProfileOut, ProfileUpdate
+from app.schemas import (
+    ChecklistOut,
+    ConsentIn,
+    DocumentOut,
+    LicenceIn,
+    LicenceTextIn,
+    LocationIn,
+    ParsedLicenceOut,
+    ProfileOut,
+    ProfileUpdate,
+)
+from app.services.licence import parse_licence_text
 from app.services.onboarding import build_checklist, get_or_create_profile
 
 router = APIRouter(prefix="/drivers/me", tags=["driver onboarding"])
@@ -48,6 +60,60 @@ async def update_profile(
     for field, value in body.model_dump(exclude_unset=True).items():
         if value is not None:
             setattr(profile, field, sorted(set(value)) if isinstance(value, list) else value)
+    await session.commit()
+    return profile
+
+
+def _parsed_out(text: str, include_text: bool = False) -> ParsedLicenceOut:
+    parsed = parse_licence_text(text)
+    return ParsedLicenceOut(
+        licence_number=parsed.licence_number,
+        classes=parsed.classes,
+        valid_till=parsed.valid_till,
+        two_wheeler=parsed.two_wheeler,
+        four_wheeler=parsed.four_wheeler,
+        heavy=parsed.heavy,
+        raw_text=text[:4000] if include_text else None,
+    )
+
+
+@router.post("/licence/parse", response_model=ParsedLicenceOut)
+async def parse_licence(body: LicenceTextIn, user: User = Depends(driver_only)):
+    """Turn OCR text from the browser or phone into a licence number and vehicle classes."""
+    return _parsed_out(body.text)
+
+
+@router.post("/licence/scan", response_model=ParsedLicenceOut)
+async def scan_licence(user: User = Depends(driver_only), session: AsyncSession = Depends(get_session)):
+    """Read the uploaded licence photos with server OCR (AWS Textract when OCR_PROVIDER=textract)."""
+    profile = await get_or_create_profile(session, user)
+    docs = [d for d in profile.documents if d.doc_type in (DocumentType.licence_front, DocumentType.licence_back)]
+    if not docs:
+        raise HTTPException(status.HTTP_409_CONFLICT, "Upload the licence photo first")
+    storage = get_storage()
+    texts = []
+    try:
+        for doc in sorted(docs, key=lambda d: d.doc_type.value != "licence_front"):
+            data = await storage.read(doc.storage_key)
+            texts.append(await ocr.read_text(data))
+    except ocr.OcrUnavailable:
+        raise HTTPException(status.HTTP_501_NOT_IMPLEMENTED, "Server licence reading is not enabled")
+    except Exception:
+        ocr.logger.exception("Licence OCR failed")
+        raise HTTPException(status.HTTP_502_BAD_GATEWAY, "Could not read the licence photo. Please enter the details.")
+    return _parsed_out("\n".join(texts), include_text=True)
+
+
+@router.put("/licence", response_model=ProfileOut)
+async def save_licence(body: LicenceIn, user: User = Depends(driver_only), session: AsyncSession = Depends(get_session)):
+    profile = await get_or_create_profile(session, user)
+    _ensure_editable(profile)
+    profile.licence_number = body.licence_number
+    profile.licence_classes = body.classes
+    profile.licence_valid_till = body.valid_till
+    profile.licence_source = body.source
+    profile.licence_raw_text = body.raw_text
+    profile.licence_verified = False  # any change needs a fresh admin check
     await session.commit()
     return profile
 

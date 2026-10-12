@@ -14,7 +14,10 @@ customer_only = require_role(Role.customer, Role.employer)
 
 def is_complete(profile: CustomerProfile, role: Role) -> bool:
     base = bool(profile.full_name and profile.home_pincode and profile.needs)
-    return base and (role != Role.employer or bool(profile.company_name))
+    # Car owners need their car number; businesses need a company name
+    if role == Role.employer:
+        return base and bool(profile.company_name)
+    return base and bool(profile.car_number)
 
 
 def to_out(profile: CustomerProfile, role: Role) -> CustomerOut:

@@ -9,6 +9,9 @@ class Storage:
     async def save(self, key: str, data: bytes, content_type: str) -> None:  # pragma: no cover
         raise NotImplementedError
 
+    async def read(self, key: str) -> bytes:  # pragma: no cover
+        raise NotImplementedError
+
     def local_path(self, key: str) -> Path | None:
         return None
 
@@ -31,6 +34,9 @@ class LocalStorage(Storage):
         path.parent.mkdir(parents=True, exist_ok=True)
         await run_in_threadpool(path.write_bytes, data)
 
+    async def read(self, key: str) -> bytes:
+        return await run_in_threadpool(self._path(key).read_bytes)
+
     def local_path(self, key: str) -> Path | None:
         path = self._path(key)
         return path if path.exists() else None
@@ -52,6 +58,10 @@ class S3Storage(Storage):
             ContentType=content_type,
             ServerSideEncryption="AES256",
         )
+
+    async def read(self, key: str) -> bytes:
+        obj = await run_in_threadpool(self.client.get_object, Bucket=self.bucket, Key=key)
+        return await run_in_threadpool(obj["Body"].read)
 
     def presigned_url(self, key: str, expires_seconds: int = 300) -> str | None:
         return self.client.generate_presigned_url(

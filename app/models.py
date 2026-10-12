@@ -1,10 +1,11 @@
 import enum
 import uuid
-from datetime import datetime
+from datetime import date, datetime
 
 from sqlalchemy import (
     JSON,
     Boolean,
+    Date,
     DateTime,
     Enum,
     Float,
@@ -18,6 +19,7 @@ from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.core.security import utcnow
 from app.db import Base
+from app.services.licence import capabilities
 
 
 def new_id() -> str:
@@ -94,6 +96,12 @@ class DriverProfile(Base):
     full_name: Mapped[str | None] = mapped_column(String(120))
     preferred_language: Mapped[str] = mapped_column(String(8), default="ta")
     licence_number: Mapped[str | None] = mapped_column(String(32))
+    # Class-of-vehicle codes from the licence (e.g. MCWG, LMV, HGMV); see app/services/licence.py
+    licence_classes: Mapped[list[str]] = mapped_column(JSON, default=list)
+    licence_valid_till: Mapped[date | None] = mapped_column(Date)
+    licence_source: Mapped[str | None] = mapped_column(String(16))  # manual | ocr_browser | ocr_server | ocr_device
+    licence_raw_text: Mapped[str | None] = mapped_column(Text)  # OCR text kept for the admin to compare
+    licence_verified: Mapped[bool] = mapped_column(Boolean, default=False)  # admin checked classes vs photo
     experience_years: Mapped[int | None] = mapped_column(Integer)
     vehicle_types: Mapped[list[str]] = mapped_column(JSON, default=list)
     availability: Mapped[str | None] = mapped_column(String(16))
@@ -128,6 +136,20 @@ class DriverProfile(Base):
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, onupdate=utcnow)
 
     user: Mapped[User] = relationship(back_populates="driver_profile")
+
+    # What the licence allows, derived from its class codes
+    @property
+    def two_wheeler(self) -> bool:
+        return capabilities(self.licence_classes or [])["two_wheeler"]
+
+    @property
+    def four_wheeler(self) -> bool:
+        return capabilities(self.licence_classes or [])["four_wheeler"]
+
+    @property
+    def heavy_vehicle(self) -> bool:
+        return capabilities(self.licence_classes or [])["heavy"]
+
     documents: Mapped[list["DriverDocument"]] = relationship(
         back_populates="driver", cascade="all, delete-orphan", order_by="DriverDocument.doc_type"
     )
@@ -164,6 +186,7 @@ class CustomerProfile(Base):
     # What they want: "on_demand" (hourly/daily/outstation driver) and/or "job" (permanent driver)
     needs: Mapped[list[str]] = mapped_column(JSON, default=list)
     vehicle_note: Mapped[str | None] = mapped_column(String(120))  # e.g. "Innova, automatic"
+    car_number: Mapped[str | None] = mapped_column(String(16))  # registration number, e.g. TN37AB1234
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, onupdate=utcnow)
 

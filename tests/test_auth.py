@@ -78,3 +78,14 @@ async def test_existing_driver_promoted_when_added_to_admin_phones(client, login
     code = (await client.post("/auth/otp/request", json={"phone": "9000000001"})).json()["dev_code"]
     r = await client.post("/auth/otp/verify", json={"phone": "9000000001", "code": code, "role": "admin"})
     assert r.status_code == 200 and r.json()["role"] == "admin"
+
+
+async def test_login_intent_does_not_create_accounts(client, login_as):
+    code = (await client.post("/auth/otp/request", json={"phone": "9876588001"})).json()["dev_code"]
+    r = await client.post("/auth/otp/verify", json={"phone": "9876588001", "code": code, "intent": "login"})
+    assert r.status_code == 404 and "register" in r.json()["detail"]
+    # After registering, login works and keeps the role
+    await login_as(client, "9876588001", role="customer")
+    code = (await client.post("/auth/otp/request", json={"phone": "9876588001"})).json()["dev_code"]
+    r = await client.post("/auth/otp/verify", json={"phone": "9876588001", "code": code, "intent": "login"})
+    assert r.status_code == 200 and r.json()["role"] == "customer" and r.json()["is_new_user"] is False

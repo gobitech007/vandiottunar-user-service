@@ -39,6 +39,12 @@ class Settings(BaseSettings):
     aws_region: str = "ap-south-1"
     max_upload_mb: int = 5
 
+    # Licence OCR on the server: "none" (the app reads the photo on the device) or "textract" (AWS Textract)
+    ocr_provider: str = "none"
+
+    # Shared secret other services (order-service) send as X-Service-Token to call /internal/*
+    service_token: str = ""
+
     # Consent (DPDP Act) — bump when the driver notice text changes
     consent_version: str = "2026-10-v1"
 
@@ -62,6 +68,8 @@ class Settings(BaseSettings):
                 raise RuntimeError("JWT_SECRET must be set to a long random value in production")
             if self.sms_provider == "console":
                 raise RuntimeError("SMS_PROVIDER=console is not allowed in production")
+            if self.service_token and len(self.service_token) < 32:
+                raise RuntimeError("SERVICE_TOKEN must be a long random value in production")
             if self.storage_backend == "s3" and not self.s3_bucket:
                 raise RuntimeError("S3_BUCKET is required when STORAGE_BACKEND=s3")
 

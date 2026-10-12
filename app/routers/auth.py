@@ -89,6 +89,9 @@ async def verify_otp(body: OtpVerifyIn, session: AsyncSession = Depends(get_sess
             status.HTTP_403_FORBIDDEN, "This number is not an admin. Add it to ADMIN_PHONES and restart the API."
         )
     user = await session.scalar(select(User).where(User.phone == body.phone))
+    if user is None and body.intent == "login" and body.phone not in s.admin_phone_set:
+        await session.commit()
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "No account found for this number. Please register first.")
     is_new = user is None
     if user is None:
         user = User(phone=body.phone, role=Role(body.role), is_active=True)
