@@ -25,11 +25,12 @@ def upgrade() -> None:
         batch_op.add_column(sa.Column('car_number', sa.String(length=16), nullable=True))
 
     with op.batch_alter_table('driver_profiles', schema=None) as batch_op:
-        batch_op.add_column(sa.Column('licence_classes', sa.JSON(), nullable=False))
+        # server defaults fill in drivers who registered before this migration
+        batch_op.add_column(sa.Column('licence_classes', sa.JSON(), nullable=False, server_default=sa.text("'[]'")))
         batch_op.add_column(sa.Column('licence_valid_till', sa.Date(), nullable=True))
         batch_op.add_column(sa.Column('licence_source', sa.String(length=16), nullable=True))
         batch_op.add_column(sa.Column('licence_raw_text', sa.Text(), nullable=True))
-        batch_op.add_column(sa.Column('licence_verified', sa.Boolean(), nullable=False))
+        batch_op.add_column(sa.Column('licence_verified', sa.Boolean(), nullable=False, server_default=sa.false()))
 
     # ### end Alembic commands ###
 
