@@ -4,13 +4,13 @@ services:
     environment:
       POSTGRES_USER: vandi
       POSTGRES_PASSWORD: vandi
-      POSTGRES_DB: vandi_users
+      POSTGRES_DB: vandiottunar
     ports:
-      - "5432:5432"
+      - "5433:5432"
     volumes:
       - pgdata:/var/lib/postgresql/data
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U vandi -d vandi_users"]
+      test: ["CMD-SHELL", "pg_isready -U vandi -d vandiottunar"]
       interval: 5s
       retries: 10
 
@@ -18,7 +18,7 @@ services:
     build: .
     env_file: .env
     environment:
-      DATABASE_URL: postgresql+asyncpg://vandi:vandi@db:5432/vandi_users
+      DATABASE_URL: postgresql+asyncpg://vandi:vandi@db:5432/vandiottunar
     ports:
       - "8000:8000"
     volumes:
