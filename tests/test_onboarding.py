@@ -7,17 +7,18 @@ pytestmark = pytest.mark.asyncio
 PROFILE = {
     "full_name": "Murugan K",
     "preferred_language": "ta",
-    "licence_number": "TN38 20200001234",
     "experience_years": 6,
     "vehicle_types": ["car_manual", "suv"],
     "availability": "full_time",
     "work_preferences": ["on_demand", "job"],
 }
+LICENCE = {"licence_number": "TN38 20200001234", "classes": ["MCWG", "LMV"], "source": "manual"}
 LOCATION = {"lat": 11.0168, "lng": 76.9558, "accuracy_m": 12, "home_pincode": "641001", "home_area": "RS Puram"}
 
 
 async def complete_application(client, headers):
     assert (await client.put("/drivers/me/profile", json=PROFILE, headers=headers)).status_code == 200
+    assert (await client.put("/drivers/me/licence", json=LICENCE, headers=headers)).status_code == 200
     assert (await client.put("/drivers/me/location", json=LOCATION, headers=headers)).status_code == 200
     version = (await client.get("/drivers/me/checklist", headers=headers)).json()["current_consent_version"]
     assert (await client.post("/drivers/me/consent", json={"version": version}, headers=headers)).status_code == 201
@@ -48,6 +49,7 @@ async def test_full_driver_onboarding_and_admin_approval(client, login_as):
     r = await client.post("/drivers/me/submit", headers=driver)
     assert r.status_code == 200 and r.json()["status"] == "submitted"
     assert r.json()["licence_number"] == "TN3820200001234"
+    assert r.json()["two_wheeler"] and r.json()["four_wheeler"] and not r.json()["heavy_vehicle"]
 
     # Locked after submission
     assert (await client.put("/drivers/me/profile", json={"experience_years": 7}, headers=driver)).status_code == 409
@@ -71,9 +73,11 @@ async def test_full_driver_onboarding_and_admin_approval(client, login_as):
     # Approval requires police verification
     r = await client.post(f"/admin/drivers/{driver_id}/approve", json={"police_verified": False}, headers=admin)
     assert r.status_code == 422
+    r = await client.post(f"/admin/drivers/{driver_id}/approve", json={"police_verified": True}, headers=admin)
+    assert r.status_code == 422 and "licence" in r.json()["detail"]
     r = await client.post(
         f"/admin/drivers/{driver_id}/approve",
-        json={"police_verified": True, "police_reference": "CBE-PV-1201"},
+        json={"police_verified": True, "licence_verified": True, "police_reference": "CBE-PV-1201"},
         headers=admin,
     )
     assert r.status_code == 200 and r.json()["status"] == "approved"
@@ -122,7 +126,10 @@ async def test_upload_validation(client, login_as):
 
 async def test_profile_validation(client, login_as):
     driver = await login_as(client, "9876543213")
-    assert (await client.put("/drivers/me/profile", json={"licence_number": "12345678"}, headers=driver)).status_code == 422
+    bad = {**LICENCE, "licence_number": "12345678"}
+    assert (await client.put("/drivers/me/licence", json=bad, headers=driver)).status_code == 422
+    assert (await client.put("/drivers/me/licence", json={**LICENCE, "classes": ["ROCKET"]}, headers=driver)).status_code == 422
+    assert (await client.put("/drivers/me/licence", json={**LICENCE, "classes": []}, headers=driver)).status_code == 422
     assert (await client.put("/drivers/me/profile", json={"vehicle_types": ["rocket"]}, headers=driver)).status_code == 422
     assert (await client.put("/drivers/me/location", json={**LOCATION, "home_pincode": "041001"}, headers=driver)).status_code == 422
     assert (await client.post("/drivers/me/consent", json={"version": "old"}, headers=driver)).status_code == 400
@@ -134,7 +141,9 @@ async def test_nearby_search(client, login_as):
     await client.post("/drivers/me/submit", headers=driver)
     admin = await login_as(client, "9000000001")
     driver_id = (await client.get("/admin/drivers", headers=admin)).json()["items"][0]["id"]
-    await client.post(f"/admin/drivers/{driver_id}/approve", json={"police_verified": True}, headers=admin)
+    await client.post(
+        f"/admin/drivers/{driver_id}/approve", json={"police_verified": True, "licence_verified": True}, headers=admin
+    )
 
     # Gandhipuram is ~3 km from RS Puram
     near = (await client.get("/admin/drivers/nearby?lat=11.0183&lng=76.9725&radius_km=5", headers=admin)).json()

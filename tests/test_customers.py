@@ -11,11 +11,12 @@ async def test_customer_registration(client, login_as):
     r = await client.put(
         "/customers/me",
         json={"full_name": "Priya R", "email": "priya@example.com", "home_pincode": "641004", "home_area": "Peelamedu",
-              "vehicle_note": "Swift, manual"},
+              "vehicle_note": "Swift, manual", "car_number": "tn 37 ab 1234"},
         headers=headers,
     )
     assert r.status_code == 200
     assert r.json()["profile_complete"] is True
+    assert r.json()["car_number"] == "TN37AB1234"
 
 
 async def test_employer_needs_company_name(client, login_as):
@@ -32,6 +33,8 @@ async def test_customer_validation(client, login_as):
     headers = await login_as(client, "9876600003", role="customer")
     assert (await client.put("/customers/me", json={"email": "not-an-email"}, headers=headers)).status_code == 422
     assert (await client.put("/customers/me", json={"needs": ["teleport"]}, headers=headers)).status_code == 422
+    assert (await client.put("/customers/me", json={"car_number": "HELLO"}, headers=headers)).status_code == 422
+    assert (await client.put("/customers/me", json={"car_number": "22 BH 1234 AA"}, headers=headers)).status_code == 200
 
 
 async def test_roles_are_kept_separate(client, login_as):
