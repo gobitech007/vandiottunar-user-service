@@ -64,11 +64,38 @@ STATE_CODES = {
 }
 
 
+# Wording printed on Indian licences (next to the national emblem). Compared with letters only, so OCR
+# spacing and punctuation don't matter.
+LICENCE_WORDING = (
+    "DRIVINGLICENCE",
+    "DRIVINGLICENSE",
+    "INDIANUNION",
+    "UNIONOFINDIA",
+    "TRANSPORTDEPARTMENT",
+    "TRANSPORTDEPT",
+    "MOTORVEHICLESDEPARTMENT",
+    "SATYAMEVAJAYATE",
+    "SATYAMEVJAYATE",
+    "PARIVAHAN",
+)
+
+
 @dataclass
 class ParsedLicence:
     licence_number: str | None = None
     classes: list[str] = field(default_factory=list)
     valid_till: date | None = None
+    wording_found: bool = False
+
+    @property
+    def looks_like_licence(self) -> bool:
+        """The photo reads like a driving licence: official wording plus a number, or a number with classes and a date."""
+        if not self.licence_number:
+            return False
+        return self.wording_found or bool(self.classes and self.valid_till)
+
+    def expired(self, today: date) -> bool:
+        return self.valid_till is not None and self.valid_till < today
 
     @property
     def two_wheeler(self) -> bool:
@@ -159,10 +186,16 @@ def _find_valid_till(text: str) -> date | None:
     return max(labelled or [d for _, d in dates])
 
 
+def has_licence_wording(text: str) -> bool:
+    letters = re.sub(r"[^A-Z]", "", (text or "").upper())
+    return any(w in letters for w in LICENCE_WORDING)
+
+
 def parse_licence_text(text: str) -> ParsedLicence:
     text = text or ""
     return ParsedLicence(
         licence_number=_find_number(text),
         classes=_find_classes(text),
         valid_till=_find_valid_till(text),
+        wording_found=has_licence_wording(text),
     )

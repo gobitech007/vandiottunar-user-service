@@ -14,14 +14,19 @@ from app.schemas import (
     ChecklistOut,
     ConsentIn,
     DocumentOut,
+    AadhaarIn,
+    AadhaarTextIn,
     LicenceIn,
     LicenceTextIn,
     LocationIn,
+    ParsedAadhaarOut,
     ParsedLicenceOut,
     ProfileOut,
     ProfileUpdate,
 )
+from app.services import aadhaar
 from app.services.licence import parse_licence_text
+from app.services.timeutil import today_ist
 from app.services.onboarding import build_checklist, get_or_create_profile
 
 router = APIRouter(prefix="/drivers/me", tags=["driver onboarding"])
@@ -73,6 +78,9 @@ def _parsed_out(text: str, include_text: bool = False) -> ParsedLicenceOut:
         two_wheeler=parsed.two_wheeler,
         four_wheeler=parsed.four_wheeler,
         heavy=parsed.heavy,
+        wording_found=parsed.wording_found,
+        looks_like_licence=parsed.looks_like_licence,
+        expired=parsed.expired(today_ist()),
         raw_text=text[:4000] if include_text else None,
     )
 
@@ -87,27 +95,70 @@ async def parse_licence(body: LicenceTextIn, user: User = Depends(driver_only)):
 async def scan_licence(user: User = Depends(driver_only), session: AsyncSession = Depends(get_session)):
     """Read the uploaded licence photos with server OCR (AWS Textract when OCR_PROVIDER=textract)."""
     profile = await get_or_create_profile(session, user)
-    docs = [d for d in profile.documents if d.doc_type in (DocumentType.licence_front, DocumentType.licence_back)]
+    text = await _server_text(profile, (DocumentType.licence_front, DocumentType.licence_back), "licence")
+    return _parsed_out(text, include_text=True)
+
+
+async def _server_text(profile: DriverProfile, types: tuple[DocumentType, ...], what: str) -> str:
+    """OCR the driver's uploaded photos of these types on the server, in the given order."""
+    docs = sorted((d for d in profile.documents if d.doc_type in types), key=lambda d: types.index(d.doc_type))
     if not docs:
-        raise HTTPException(status.HTTP_409_CONFLICT, "Upload the licence photo first")
+        raise HTTPException(status.HTTP_409_CONFLICT, f"Upload the {what} photo first")
     storage = get_storage()
     texts = []
     try:
-        for doc in sorted(docs, key=lambda d: d.doc_type.value != "licence_front"):
-            data = await storage.read(doc.storage_key)
-            texts.append(await ocr.read_text(data))
+        for doc in docs:
+            texts.append(await ocr.read_text(await storage.read(doc.storage_key)))
     except ocr.OcrUnavailable:
-        raise HTTPException(status.HTTP_501_NOT_IMPLEMENTED, "Server licence reading is not enabled")
+        raise HTTPException(status.HTTP_501_NOT_IMPLEMENTED, "Server photo reading is not enabled")
     except Exception:
-        ocr.logger.exception("Licence OCR failed")
-        raise HTTPException(status.HTTP_502_BAD_GATEWAY, "Could not read the licence photo. Please enter the details.")
-    return _parsed_out("\n".join(texts), include_text=True)
+        ocr.logger.exception("%s OCR failed", what)
+        raise HTTPException(status.HTTP_502_BAD_GATEWAY, f"Could not read the {what} photo. Please enter the details.")
+    return "\n".join(texts)
+
+
+def _aadhaar_out(text: str) -> ParsedAadhaarOut:
+    number = aadhaar.find_aadhaar(text)
+    return ParsedAadhaarOut(
+        aadhaar_number=number,
+        masked=aadhaar.mask(number) if number else None,
+        wording_found=aadhaar.has_aadhaar_wording(text),
+    )
+
+
+@router.post("/aadhaar/parse", response_model=ParsedAadhaarOut)
+async def parse_aadhaar(body: AadhaarTextIn, user: User = Depends(driver_only)):
+    """Find the Aadhaar number in OCR text from the browser or phone. Nothing is stored."""
+    return _aadhaar_out(body.text)
+
+
+@router.post("/aadhaar/scan", response_model=ParsedAadhaarOut)
+async def scan_aadhaar(user: User = Depends(driver_only), session: AsyncSession = Depends(get_session)):
+    """Read the uploaded ID photo with server OCR. Nothing is stored."""
+    profile = await get_or_create_profile(session, user)
+    return _aadhaar_out(await _server_text(profile, (DocumentType.id_proof,), "Aadhaar"))
+
+
+@router.put("/aadhaar", response_model=ProfileOut)
+async def save_aadhaar(body: AadhaarIn, user: User = Depends(driver_only), session: AsyncSession = Depends(get_session)):
+    """Checks the full number, then keeps only its last 4 digits."""
+    profile = await get_or_create_profile(session, user)
+    _ensure_editable(profile)
+    profile.aadhaar_last4 = body.aadhaar_number[-4:]
+    profile.aadhaar_source = body.source
+    await session.commit()
+    return profile
 
 
 @router.put("/licence", response_model=ProfileOut)
 async def save_licence(body: LicenceIn, user: User = Depends(driver_only), session: AsyncSession = Depends(get_session)):
     profile = await get_or_create_profile(session, user)
     _ensure_editable(profile)
+    if body.valid_till and body.valid_till < today_ist():
+        raise HTTPException(
+            422,
+            f"This licence expired on {body.valid_till:%d-%m-%Y}. Renew it before registering.",
+        )
     profile.licence_number = body.licence_number
     profile.licence_classes = body.classes
     profile.licence_valid_till = body.valid_till

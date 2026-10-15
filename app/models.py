@@ -102,6 +102,9 @@ class DriverProfile(Base):
     licence_source: Mapped[str | None] = mapped_column(String(16))  # manual | ocr_browser | ocr_server | ocr_device
     licence_raw_text: Mapped[str | None] = mapped_column(Text)  # OCR text kept for the admin to compare
     licence_verified: Mapped[bool] = mapped_column(Boolean, default=False)  # admin checked classes vs photo
+    # Aadhaar: only the last 4 digits are kept (masked as XXXX XXXX 1234)
+    aadhaar_last4: Mapped[str | None] = mapped_column(String(4))
+    aadhaar_source: Mapped[str | None] = mapped_column(String(16))  # manual | ocr_browser | ocr_server | ocr_device
     experience_years: Mapped[int | None] = mapped_column(Integer)
     vehicle_types: Mapped[list[str]] = mapped_column(JSON, default=list)
     availability: Mapped[str | None] = mapped_column(String(16))

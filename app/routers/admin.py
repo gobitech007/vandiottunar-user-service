@@ -10,6 +10,8 @@ from app.core.storage import get_storage
 from app.db import get_session
 from app.deps import require_role
 from app.models import CustomerProfile, DriverDocument, DriverProfile, DriverStatus, ReviewEvent, Role, User
+from app.services.licence import has_licence_wording
+from app.services.timeutil import today_ist
 from app.schemas import (
     AdminCustomer,
     AdminDocumentOut,
@@ -149,6 +151,8 @@ async def driver_detail(
         user_id=p.user_id,
         phone=p.user.phone,
         licence_raw_text=p.licence_raw_text,
+        licence_wording_found=has_licence_wording(p.licence_raw_text) if p.licence_raw_text else None,
+        aadhaar_source=p.aadhaar_source,
         police_reference=p.police_reference,
         registration_accuracy_m=p.registration_accuracy_m,
         documents=docs,
@@ -202,6 +206,8 @@ async def approve(
         raise HTTPException(422, "Check the licence number and vehicle classes against the photo before approval")
     if not p.licence_classes:
         raise HTTPException(422, "The driver has no licence classes recorded")
+    if p.licence_valid_till and p.licence_valid_till < today_ist():
+        raise HTTPException(422, f"The driver's licence expired on {p.licence_valid_till:%d-%m-%Y}")
     p.licence_verified = True
     if body.police_verified and not p.police_verified:
         p.police_verified = True

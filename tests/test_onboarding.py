@@ -13,12 +13,14 @@ PROFILE = {
     "work_preferences": ["on_demand", "job"],
 }
 LICENCE = {"licence_number": "TN38 20200001234", "classes": ["MCWG", "LMV"], "source": "manual"}
+AADHAAR = "2345 6789 0124"  # passes the Verhoeff check
 LOCATION = {"lat": 11.0168, "lng": 76.9558, "accuracy_m": 12, "home_pincode": "641001", "home_area": "RS Puram"}
 
 
 async def complete_application(client, headers):
     assert (await client.put("/drivers/me/profile", json=PROFILE, headers=headers)).status_code == 200
     assert (await client.put("/drivers/me/licence", json=LICENCE, headers=headers)).status_code == 200
+    assert (await client.put("/drivers/me/aadhaar", json={"aadhaar_number": AADHAAR}, headers=headers)).status_code == 200
     assert (await client.put("/drivers/me/location", json=LOCATION, headers=headers)).status_code == 200
     version = (await client.get("/drivers/me/checklist", headers=headers)).json()["current_consent_version"]
     assert (await client.post("/drivers/me/consent", json={"version": version}, headers=headers)).status_code == 201

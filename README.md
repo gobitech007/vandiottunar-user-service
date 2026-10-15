@@ -90,3 +90,9 @@ TEST_DATABASE_URL=postgresql+asyncpg://... pytest   # PostgreSQL
 - RDS PostgreSQL, a private S3 bucket (`STORAGE_BACKEND=s3`), the API on ECS/App Runner or EC2 behind HTTPS.
 - Register a DLT sender ID and OTP template, then set `SMS_PROVIDER=msg91` (check MSG91's current API docs).
 - Set `ENVIRONMENT=production`, a long random `JWT_SECRET`, and `CORS_ORIGINS` to your real domains.
+
+### Aadhaar
+
+`POST /drivers/me/aadhaar/parse` (OCR text) and `POST /drivers/me/aadhaar/scan` (server OCR of the ID photo) find the Aadhaar number and return it to the driver only. `PUT /drivers/me/aadhaar` checks the number (12 digits, Verhoeff check digit) and stores **only the last 4 digits** (`aadhaar_last4`), as UIDAI requires of services that aren't authorised to keep Aadhaar numbers. Submitting an application needs it (`aadhaar_captured` in the checklist).
+
+Run `python -m alembic upgrade head` after pulling (adds `aadhaar_last4`, `aadhaar_source`).

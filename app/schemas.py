@@ -132,7 +132,37 @@ class ParsedLicenceOut(BaseModel):
     two_wheeler: bool
     four_wheeler: bool
     heavy: bool
+    # Checks on the photo's text: licence wording ("Indian Union Driving Licence", "Transport Department"…)
+    wording_found: bool = False
+    looks_like_licence: bool = False
+    expired: bool = False
     raw_text: str | None = None
+
+
+class AadhaarTextIn(BaseModel):
+    text: str = Field(max_length=8000)
+
+
+class ParsedAadhaarOut(BaseModel):
+    # Full number goes back only to the driver who uploaded the photo; it is never stored
+    aadhaar_number: str | None
+    masked: str | None
+    wording_found: bool
+
+
+class AadhaarIn(BaseModel):
+    aadhaar_number: str
+    source: LicenceSource = "manual"
+
+    @field_validator("aadhaar_number")
+    @classmethod
+    def _valid(cls, v: str) -> str:
+        from app.services.aadhaar import clean, is_valid_aadhaar
+
+        v = clean(v)
+        if not is_valid_aadhaar(v):
+            raise ValueError("This is not a valid Aadhaar number. Check the 12 digits on the card.")
+        return v
 
 
 class LocationIn(BaseModel):
@@ -176,6 +206,7 @@ class ProfileOut(BaseModel):
     two_wheeler: bool = False
     four_wheeler: bool = False
     heavy_vehicle: bool = False
+    aadhaar_last4: str | None = None
     experience_years: int | None
     vehicle_types: list[str]
     availability: str | None
@@ -200,6 +231,7 @@ class ProfileOut(BaseModel):
 class ChecklistOut(BaseModel):
     profile_complete: bool
     licence_complete: bool
+    aadhaar_captured: bool = False
     location_captured: bool
     consent_accepted: bool
     missing_documents: list[DocumentType]
@@ -231,6 +263,8 @@ class AdminDriverDetail(ProfileOut):
     user_id: str
     phone: str
     licence_raw_text: str | None
+    licence_wording_found: bool | None = None
+    aadhaar_source: str | None = None
     police_reference: str | None
     registration_accuracy_m: float | None
     documents: list[AdminDocumentOut]
