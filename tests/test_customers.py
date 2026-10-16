@@ -15,7 +15,12 @@ async def test_customer_registration(client, login_as):
         headers=headers,
     )
     assert r.status_code == 200
-    assert r.json()["profile_complete"] is True
+    # Details are in, but the booking & cancellation policy must be accepted first
+    assert r.json()["profile_complete"] is False and r.json()["policy_accepted"] is False
+    version = r.json()["current_policy_version"]
+    assert (await client.put("/customers/me", json={"accept_policy_version": "old"}, headers=headers)).status_code == 400
+    r = await client.put("/customers/me", json={"accept_policy_version": version}, headers=headers)
+    assert r.json()["profile_complete"] is True and r.json()["policy_accepted"] is True and r.json()["policy_accepted_at"]
     assert r.json()["car_number"] == "TN37AB1234"
 
 
@@ -25,7 +30,7 @@ async def test_employer_needs_company_name(client, login_as):
     assert me["needs"] == ["job"]
     r = await client.put("/customers/me", json={"full_name": "Arun S", "home_pincode": "641018"}, headers=headers)
     assert r.json()["profile_complete"] is False
-    r = await client.put("/customers/me", json={"company_name": "Kovai Logistics"}, headers=headers)
+    r = await client.put("/customers/me", json={"company_name": "Kovai Logistics", "accept_policy_version": me["current_policy_version"]}, headers=headers)
     assert r.json()["profile_complete"] is True
 
 
@@ -63,3 +68,15 @@ async def test_parallel_first_customer_requests_do_not_crash(client, login_as):
     headers = await login_as(client, "9876600099", role="customer")
     results = await asyncio.gather(*(client.get("/customers/me", headers=headers) for _ in range(3)))
     assert [r.status_code for r in results] == [200, 200, 200]
+
+
+async def test_new_policy_version_asks_again(client, login_as, monkeypatch):
+    from app.core.config import get_settings
+
+    headers = await login_as(client, "9876600009", role="customer")
+    v = (await client.get("/customers/me", headers=headers)).json()["current_policy_version"]
+    body = {"full_name": "Priya R", "home_pincode": "641004", "car_number": "TN37AB1234", "accept_policy_version": v}
+    assert (await client.put("/customers/me", json=body, headers=headers)).json()["profile_complete"] is True
+    monkeypatch.setattr(get_settings(), "customer_policy_version", "2027-01-v2")
+    me = (await client.get("/customers/me", headers=headers)).json()
+    assert me["profile_complete"] is False and me["policy_accepted"] is False

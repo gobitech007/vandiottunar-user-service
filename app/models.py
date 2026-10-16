@@ -190,6 +190,9 @@ class CustomerProfile(Base):
     needs: Mapped[list[str]] = mapped_column(JSON, default=list)
     vehicle_note: Mapped[str | None] = mapped_column(String(120))  # e.g. "Innova, automatic"
     car_number: Mapped[str | None] = mapped_column(String(16))  # registration number, e.g. TN37AB1234
+    # Booking & cancellation policy accepted (version + when) — needed before booking
+    policy_version: Mapped[str | None] = mapped_column(String(32))
+    policy_accepted_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, onupdate=utcnow)
 

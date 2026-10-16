@@ -80,6 +80,7 @@ async def user_detail(user_id: str, session: AsyncSession = Depends(get_session)
         out.home_pincode = customer.home_pincode
         out.home_area = customer.home_area
         out.car_number = customer.car_number
+        out.policy_accepted = customer.policy_version == get_settings().customer_policy_version
     driver = await session.scalar(select(DriverProfile).where(DriverProfile.user_id == user.id))
     if driver:
         out.full_name = driver.full_name

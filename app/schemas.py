@@ -316,6 +316,8 @@ class CustomerUpdate(BaseModel):
     needs: list[CustomerNeed] | None = Field(default=None, max_length=2)
     vehicle_note: str | None = Field(default=None, max_length=120)
     car_number: str | None = Field(default=None, max_length=16)
+    # Send the policy version shown to the customer to accept it
+    accept_policy_version: str | None = Field(default=None, max_length=32)
 
     @field_validator("car_number")
     @classmethod
@@ -335,6 +337,10 @@ class CustomerOut(BaseModel):
     needs: list[str]
     vehicle_note: str | None
     car_number: str | None = None
+    policy_version: str | None = None
+    policy_accepted_at: datetime | None = None
+    current_policy_version: str = ""
+    policy_accepted: bool = False
     profile_complete: bool
     created_at: datetime
 
@@ -388,3 +394,4 @@ class InternalUser(BaseModel):
     home_pincode: str | None = None
     home_area: str | None = None
     car_number: str | None = None
+    policy_accepted: bool = False  # customers: current booking & cancellation policy accepted
