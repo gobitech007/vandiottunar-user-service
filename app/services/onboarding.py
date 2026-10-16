@@ -47,7 +47,8 @@ async def build_checklist(session: AsyncSession, profile: DriverProfile) -> Chec
     missing_docs = [d for d in REQUIRED_DOCUMENTS if d not in have_docs]
     licence_ok = bool(profile.licence_number and profile.licence_classes)
     aadhaar_ok = bool(profile.aadhaar_last4)
-    location_ok = profile.registration_lat is not None and profile.home_pincode is not None
+    # City is needed too: drivers who saved their location before cities existed are asked once more
+    location_ok = profile.registration_lat is not None and profile.home_pincode is not None and profile.city is not None
     consent = await latest_consent(session, profile.user_id)
     consent_ok = consent is not None and consent.version == version
     return ChecklistOut(

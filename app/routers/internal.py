@@ -35,6 +35,7 @@ def _driver(p: DriverProfile) -> InternalDriver:
         full_name=p.full_name,
         phone=p.user.phone,
         status=p.status,
+        city=p.city,
         home_pincode=p.home_pincode,
         home_area=p.home_area,
         home_lat=p.home_lat,
@@ -77,6 +78,7 @@ async def user_detail(user_id: str, session: AsyncSession = Depends(get_session)
     if customer:
         out.full_name = customer.full_name
         out.company_name = customer.company_name
+        out.city = customer.city
         out.home_pincode = customer.home_pincode
         out.home_area = customer.home_area
         out.car_number = customer.car_number
@@ -84,6 +86,7 @@ async def user_detail(user_id: str, session: AsyncSession = Depends(get_session)
     driver = await session.scalar(select(DriverProfile).where(DriverProfile.user_id == user.id))
     if driver:
         out.full_name = driver.full_name
+        out.city = driver.city
         out.home_pincode = driver.home_pincode
         out.home_area = driver.home_area
     return out

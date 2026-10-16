@@ -54,6 +54,7 @@ def _summary(p: DriverProfile) -> AdminDriverSummary:
         heavy_vehicle=p.heavy_vehicle,
         phone=p.user.phone,
         status=p.status,
+        city=p.city,
         home_pincode=p.home_pincode,
         home_area=p.home_area,
         experience_years=p.experience_years,
@@ -79,7 +80,7 @@ async def list_drivers(
     if q:
         like = f"%{q.strip()}%"
         stmt = stmt.where(
-            or_(DriverProfile.full_name.ilike(like), User.phone.ilike(like), DriverProfile.home_pincode.ilike(like))
+            or_(DriverProfile.full_name.ilike(like), User.phone.ilike(like), DriverProfile.home_pincode.ilike(like), DriverProfile.city.ilike(like))
         )
     total = await session.scalar(select(func.count()).select_from(stmt.order_by(None).subquery()))
     order = DriverProfile.submitted_at.desc() if status_filter == DriverStatus.submitted else DriverProfile.created_at.desc()
@@ -286,6 +287,7 @@ async def list_customers(
                 CustomerProfile.company_name.ilike(like),
                 User.phone.ilike(like),
                 CustomerProfile.home_pincode.ilike(like),
+                CustomerProfile.city.ilike(like),
             )
         )
     total = await session.scalar(select(func.count()).select_from(stmt.order_by(None).subquery()))

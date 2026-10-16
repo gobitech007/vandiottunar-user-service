@@ -113,6 +113,7 @@ class DriverProfile(Base):
     expected_pay_note: Mapped[str | None] = mapped_column(String(120))
 
     # Where they want to work (may differ from where they registered)
+    city: Mapped[str | None] = mapped_column(String(32), index=True)  # slug from services/cities.py
     home_pincode: Mapped[str | None] = mapped_column(String(6), index=True)
     home_area: Mapped[str | None] = mapped_column(String(120))
     home_lat: Mapped[float | None] = mapped_column(Float)
@@ -184,6 +185,7 @@ class CustomerProfile(Base):
     email: Mapped[str | None] = mapped_column(String(254))
     preferred_language: Mapped[str] = mapped_column(String(8), default="ta")
     company_name: Mapped[str | None] = mapped_column(String(160))  # employers only
+    city: Mapped[str | None] = mapped_column(String(32), index=True)  # slug from services/cities.py
     home_pincode: Mapped[str | None] = mapped_column(String(6), index=True)
     home_area: Mapped[str | None] = mapped_column(String(120))
     # What they want: "on_demand" (hourly/daily/outstation driver) and/or "job" (permanent driver)

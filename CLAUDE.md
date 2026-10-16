@@ -18,6 +18,8 @@ app/
   routers/drivers.py /drivers/me/* onboarding: profile, licence parse/scan/save, aadhaar parse/scan/save, location, consent, documents, checklist, submit
   routers/customers.py /customers/me
   routers/admin.py   /admin/drivers (list, detail, approve/reject/suspend, nearby), /admin/customers, /admin/stats, document files
+  routers/cities.py  GET /cities (public): cities people can register in
+  services/cities.py all 38 Tamil Nadu districts (en/ta); ENABLED_CITIES picks which are offered
   routers/internal.py /internal/drivers, /internal/users/{id}  (X-Service-Token; used by order-service)
   services/licence.py  Indian licence parser: number, validity, COV classes (MCWG/LMV/LMV-TR/HGMV…), wording check
   services/aadhaar.py  Aadhaar finder + Verhoeff check; only last 4 digits are ever stored
@@ -51,6 +53,7 @@ python -m pytest -q
 - Licence photo check (official wording), expiry shown and enforced; Aadhaar number read from the ID photo, Verhoeff-checked, last 4 stored (required to submit).
 - `/internal` API for the order-service.
 - Customers accept the booking & cancellation policy (versioned, `accept_policy_version`); profile isn't complete without it; `/internal/users` reports `policy_accepted`.
+- City at registration: `services/cities.py` (38 districts), `ENABLED_CITIES`, public `GET /cities`, `city` on customer and driver profiles (existing rows backfilled from pincode: 600→Chennai, 641/642→Coimbatore, 620/621→Trichy).
 
 ## Vandi Ottunar: the whole project
 
@@ -79,6 +82,7 @@ Domain: vandiottunar.in. Owner: Gobinath (gobitech007). Brand: green `#0E3B2E`, 
 - **Booking lifecycle** (order-service `BookingStatus`): `pending` → `assigned` (admin manual/auto) → *customer pays ₹1* (`payment_status` `unpaid` → `paid`/`waived`) → `in_progress` (driver enters customer's **start code**) → `completed` (driver enters **end code**), or `cancelled`.
 - **Cancellation fee**: customer cancellations cost `CANCELLATION_FEE_PAISE` (₹49) once a driver is assigned (`CANCELLATION_FEE_APPLIES=assigned|always|never`). The customer pays it through the payment-service (`POST /payments/booking/{id}/cancel`), which then cancels the booking. Admin cancellations are free. Public `GET /bookings/policy` (order-service) gives the fee amounts shown in the policy text.
 - **Driver fare** (order-service `services/fares.py`): trips cost `HOURLY_RATE_PAISE` ₹150/h and `DAILY_RATE_PAISE` ₹1000 per `DAILY_HOURS` 8 h day; hours beyond full days are hourly but never more than one more day (7 h = ₹1000); time rounds up to whole hours, minimum 1. A new customer's first booking (no earlier non-cancelled booking) gets `NEW_CUSTOMER_DISCOUNT_PCT` 10% off. Rates and discount are copied onto the booking. Bookings return `rates` and `fare` (`basis` planned = booked times, actual = start to end code); no end time → `rates` only; permanent jobs aren't priced. Customers see the fare in the ₹1 confirm box before paying (web + app). Fare is shown, not collected online.
+- **Cities**: people pick a city before the pincode at registration (customers and drivers, web + app). user-service `services/cities.py` lists all 38 Tamil Nadu districts; only `ENABLED_CITIES` (default `chennai,coimbatore,tiruchirappalli`, in display order) are offered by public `GET /cities` and accepted. Stored as a slug in `CustomerProfile.city` / `DriverProfile.city` and passed on `/internal/users` and `/internal/drivers` (`city`). Drivers must give a city in `PUT /drivers/me/location` (location step isn't done without it). To open a new district, add its slug to `ENABLED_CITIES`; no release needed.
 - **Booking & cancellation policy**: customers accept it at registration (user-service `CustomerProfile.policy_version`, `CUSTOMER_POLICY_VERSION`; bump it when the text changes and customers must accept again). The order-service refuses bookings from customers who haven't accepted it. Policy text lives in web `i18n.tsx` and mobile `i18n.ts` (`policyPoints`), in both languages.
 - **Privacy rules**: the customer never sees the driver's phone. After paying they get an encrypted WhatsApp link (`/chat/<Fernet token>`) that opens the business WhatsApp number with a 6-digit chat PIN; the relay forwards messages between registered numbers. Aadhaar: only the last 4 digits are stored. GPS points are accepted only between start and end codes and purged after 90 days.
 - **Payment return**: payment-service redirects to `WEB_URL/dashboard?booking=<id>&payment=paid|cancelled|failed` (web) or `vandiottunar://payment?booking=…&payment=…` (app). `cancelled` = cancellation fee paid and booking cancelled.

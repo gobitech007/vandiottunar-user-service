@@ -177,6 +177,7 @@ async def set_location(body: LocationIn, user: User = Depends(driver_only), sess
     profile.registration_lng = body.lng
     profile.registration_accuracy_m = body.accuracy_m
     profile.location_captured_at = utcnow()
+    profile.city = body.city
     profile.home_pincode = body.home_pincode
     profile.home_area = body.home_area
     # Home/work location defaults to where they are now, but they can pick another spot on the map

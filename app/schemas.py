@@ -169,11 +169,19 @@ class LocationIn(BaseModel):
     lat: float = Field(ge=-90, le=90)
     lng: float = Field(ge=-180, le=180)
     accuracy_m: float | None = Field(default=None, ge=0)
+    city: str = Field(max_length=32)  # one of GET /cities
     home_pincode: str = Field(pattern=r"^[1-9]\d{5}$")
     home_area: str | None = Field(default=None, max_length=120)
     home_lat: float | None = Field(default=None, ge=-90, le=90)
     home_lng: float | None = Field(default=None, ge=-180, le=180)
     service_radius_km: int = Field(default=10, ge=2, le=100)
+
+    @field_validator("city")
+    @classmethod
+    def _city(cls, v: str | None) -> str | None:
+        from app.services.cities import check
+
+        return None if v is None else check(v)
 
 
 class ConsentIn(BaseModel):
@@ -212,6 +220,7 @@ class ProfileOut(BaseModel):
     availability: str | None
     work_preferences: list[str]
     expected_pay_note: str | None
+    city: str | None = None
     home_pincode: str | None
     home_area: str | None
     home_lat: float | None
@@ -250,6 +259,7 @@ class AdminDriverSummary(BaseModel):
     two_wheeler: bool = False
     four_wheeler: bool = False
     heavy_vehicle: bool = False
+    city: str | None = None
     home_pincode: str | None
     home_area: str | None
     experience_years: int | None
@@ -311,6 +321,7 @@ class CustomerUpdate(BaseModel):
     email: str | None = Field(default=None, max_length=254, pattern=r"^[^@\s]+@[^@\s]+\.[^@\s]+$")
     preferred_language: Literal["ta", "en"] | None = None
     company_name: str | None = Field(default=None, max_length=160)
+    city: str | None = Field(default=None, max_length=32)  # one of GET /cities
     home_pincode: str | None = Field(default=None, pattern=r"^[1-9]\d{5}$")
     home_area: str | None = Field(default=None, max_length=120)
     needs: list[CustomerNeed] | None = Field(default=None, max_length=2)
@@ -324,6 +335,13 @@ class CustomerUpdate(BaseModel):
     def _car(cls, v: str | None) -> str | None:
         return None if v is None else normalize_car_number(v)
 
+    @field_validator("city")
+    @classmethod
+    def _city(cls, v: str | None) -> str | None:
+        from app.services.cities import check
+
+        return None if v is None else check(v)
+
 
 class CustomerOut(BaseModel):
     model_config = ConfigDict(from_attributes=True)
@@ -332,6 +350,7 @@ class CustomerOut(BaseModel):
     email: str | None
     preferred_language: str
     company_name: str | None
+    city: str | None = None
     home_pincode: str | None
     home_area: str | None
     needs: list[str]
@@ -369,6 +388,7 @@ class InternalDriver(BaseModel):
     full_name: str | None
     phone: str
     status: DriverStatus
+    city: str | None = None
     home_pincode: str | None
     home_area: str | None
     home_lat: float | None
@@ -384,6 +404,12 @@ class InternalDriver(BaseModel):
     experience_years: int | None
 
 
+class CityOut(BaseModel):
+    slug: str
+    name_en: str
+    name_ta: str
+
+
 class InternalUser(BaseModel):
     user_id: str
     role: Role
@@ -391,6 +417,7 @@ class InternalUser(BaseModel):
     is_active: bool
     full_name: str | None = None
     company_name: str | None = None
+    city: str | None = None
     home_pincode: str | None = None
     home_area: str | None = None
     car_number: str | None = None

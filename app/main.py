@@ -7,7 +7,7 @@ from fastapi.responses import JSONResponse
 
 from app.core.config import get_settings
 from app.db import Base, engine
-from app.routers import admin, auth, customers, drivers, internal
+from app.routers import admin, auth, cities, customers, drivers, internal
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger("vandi.api")
@@ -48,6 +48,7 @@ app.add_middleware(
 )
 
 app.include_router(auth.router)
+app.include_router(cities.router)
 app.include_router(drivers.router)
 app.include_router(customers.router)
 app.include_router(admin.router)

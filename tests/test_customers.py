@@ -80,3 +80,22 @@ async def test_new_policy_version_asks_again(client, login_as, monkeypatch):
     monkeypatch.setattr(get_settings(), "customer_policy_version", "2027-01-v2")
     me = (await client.get("/customers/me", headers=headers)).json()
     assert me["profile_complete"] is False and me["policy_accepted"] is False
+
+
+async def test_cities_and_city_on_profiles(client, login_as, monkeypatch):
+    cities = (await client.get("/cities")).json()
+    assert [c["slug"] for c in cities] == ["chennai", "coimbatore", "tiruchirappalli"]
+    assert cities[0] == {"slug": "chennai", "name_en": "Chennai", "name_ta": "சென்னை"}
+
+    headers = await login_as(client, "9876600004", role="customer")
+    r = await client.put("/customers/me", json={"city": "Coimbatore"}, headers=headers)
+    assert r.status_code == 200 and r.json()["city"] == "coimbatore"
+    r = await client.put("/customers/me", json={"city": "madurai"}, headers=headers)  # not served yet
+    assert r.status_code == 422 and "don't serve" in r.text
+
+    # A district is switched on by settings alone
+    from app.core.config import get_settings
+
+    monkeypatch.setattr(get_settings(), "enabled_cities", "chennai,coimbatore,tiruchirappalli,madurai")
+    assert (await client.put("/customers/me", json={"city": "madurai"}, headers=headers)).json()["city"] == "madurai"
+    assert len((await client.get("/cities")).json()) == 4

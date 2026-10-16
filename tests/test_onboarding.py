@@ -14,7 +14,7 @@ PROFILE = {
 }
 LICENCE = {"licence_number": "TN38 20200001234", "classes": ["MCWG", "LMV"], "source": "manual"}
 AADHAAR = "2345 6789 0124"  # passes the Verhoeff check
-LOCATION = {"lat": 11.0168, "lng": 76.9558, "accuracy_m": 12, "home_pincode": "641001", "home_area": "RS Puram"}
+LOCATION = {"lat": 11.0168, "lng": 76.9558, "accuracy_m": 12, "city": "coimbatore", "home_pincode": "641001", "home_area": "RS Puram"}
 
 
 async def complete_application(client, headers):
@@ -134,6 +134,9 @@ async def test_profile_validation(client, login_as):
     assert (await client.put("/drivers/me/licence", json={**LICENCE, "classes": []}, headers=driver)).status_code == 422
     assert (await client.put("/drivers/me/profile", json={"vehicle_types": ["rocket"]}, headers=driver)).status_code == 422
     assert (await client.put("/drivers/me/location", json={**LOCATION, "home_pincode": "041001"}, headers=driver)).status_code == 422
+    assert (await client.put("/drivers/me/location", json={**LOCATION, "city": "salem"}, headers=driver)).status_code == 422
+    no_city = {k: v for k, v in LOCATION.items() if k != "city"}
+    assert (await client.put("/drivers/me/location", json=no_city, headers=driver)).status_code == 422
     assert (await client.post("/drivers/me/consent", json={"version": "old"}, headers=driver)).status_code == 400
 
 

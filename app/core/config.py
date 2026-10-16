@@ -48,6 +48,9 @@ class Settings(BaseSettings):
     # Consent (DPDP Act) — bump when the driver notice text changes
     consent_version: str = "2026-10-v1"
     # Customer booking & cancellation policy — bump when its text changes; customers accept again
+    # Cities people can pick at registration (slugs from app/services/cities.py, in display order).
+    # Add a district here to start serving it.
+    enabled_cities: str = "chennai,coimbatore,tiruchirappalli"
     customer_policy_version: str = "2026-10-v1"
 
     cors_origins: str = "http://localhost:5173"
